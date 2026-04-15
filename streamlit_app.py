@@ -8,7 +8,13 @@ import plotly.express as px
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, OrdinalEncoder, LabelEncoder, PolynomialFeatures
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, mean_squared_error, r2_score, accuracy_score, confusion_matrix
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, GradientBoostingRegressor, GradientBoostingClassifier
+from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
+from sklearn.svm import SVR, SVC
 from scipy.stats import chi2_contingency, f_oneway, pearsonr
 
 import plotly.io as pio
@@ -844,6 +850,121 @@ def transform_feature_engineering(df):
     return df
 
 
+def modeling_section(df):
+    numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
+    if not numeric_columns:
+        st.info("No numeric columns available. Machine learning models require numeric datasets.")
+        return df
+
+    st.markdown("This section allows you to train and evaluate supervised Machine Learning models.")
+    st.markdown("*(Note: Ensure your features and target are numeric/encoded beforehand using the 'Transform' page.)*")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        task = st.radio("Machine Learning Task", ["Regression", "Classification"], key="ml-task")
+    with col2:
+        target_col = st.selectbox("Select Target Variable (What to predict)", numeric_columns, key="ml-target")
+
+    features = [col for col in numeric_columns if col != target_col]
+    
+    if not features:
+        st.warning("You must have at least one numeric feature column apart from the target.")
+        return df
+        
+    selected_features = st.multiselect("Select Feature Variables (Predictors)", features, default=features, key="ml-features")
+    test_size = st.slider("Test Set Size (%)", 10, 50, 20, 5, key="ml-test-size")
+
+    if task == "Regression":
+        model_name = st.selectbox("Algorithm", ["Linear Regression", "Decision Tree Regressor", "Random Forest Regressor", "K-Nearest Neighbors Regressor", "Support Vector Regressor", "Gradient Boosting Regressor"], key="ml-algo-reg")
+    else:
+        model_name = st.selectbox("Algorithm", ["Logistic Regression", "Decision Tree Classifier", "Random Forest Classifier", "K-Nearest Neighbors Classifier", "Support Vector Classifier", "Gradient Boosting Classifier"], key="ml-algo-clf")
+
+    if st.button("Train Model", key="ml-train"):
+        if not selected_features:
+            st.error("Please select at least one feature to train on.")
+            return df
+            
+        X = df[selected_features].dropna()
+        y = df.loc[X.index, target_col].dropna()
+        
+        common_idx = X.index.intersection(y.index)
+        X = X.loc[common_idx]
+        y = y.loc[common_idx]
+
+        if len(X) < 10:
+            st.error("Not enough data remaining after dropping missing values. Please prepare your data first.")
+            return df
+            
+        try:
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size/100.0, random_state=42)
+
+            if model_name == "Linear Regression":
+                model = LinearRegression()
+            elif model_name == "Decision Tree Regressor":
+                model = DecisionTreeRegressor(random_state=42)
+            elif model_name == "Random Forest Regressor":
+                model = RandomForestRegressor(random_state=42)
+            elif model_name == "Gradient Boosting Regressor":
+                model = GradientBoostingRegressor(random_state=42)
+            elif model_name == "K-Nearest Neighbors Regressor":
+                model = KNeighborsRegressor()
+            elif model_name == "Support Vector Regressor":
+                model = SVR()
+            elif model_name == "Logistic Regression":
+                model = LogisticRegression(max_iter=1000, random_state=42)
+            elif model_name == "Decision Tree Classifier":
+                model = DecisionTreeClassifier(random_state=42)
+            elif model_name == "Random Forest Classifier":
+                model = RandomForestClassifier(random_state=42)
+            elif model_name == "Gradient Boosting Classifier":
+                model = GradientBoostingClassifier(random_state=42)
+            elif model_name == "K-Nearest Neighbors Classifier":
+                model = KNeighborsClassifier()
+            elif model_name == "Support Vector Classifier":
+                model = SVC(random_state=42)
+
+            with st.spinner("Training model..."):
+                model.fit(X_train, y_train)
+                y_pred = model.predict(X_test)
+
+            st.success("Training complete!")
+            st.markdown("### Performance Metrics")
+            
+            if task == "Regression":
+                r2 = r2_score(y_test, y_pred)
+                rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+                
+                m1, m2 = st.columns(2)
+                m1.markdown(f"<div class='metric-card'><h3>R² Score</h3><p class='highlight'>{r2:.3f}</p></div>", unsafe_allow_html=True)
+                m2.markdown(f"<div class='metric-card'><h3>RMSE</h3><p class='highlight'>{rmse:.3f}</p></div>", unsafe_allow_html=True)
+                
+                st.markdown("### Actual vs Predicted")
+                scatter_df = pd.DataFrame({"Actual": y_test, "Predicted": y_pred})
+                fig = px.scatter(scatter_df, x="Actual", y="Predicted", title="Actual vs Predicted Values")
+                min_val = min(y_test.min(), y_pred.min())
+                max_val = max(y_test.max(), y_pred.max())
+                fig.add_shape(type="line", x0=min_val, y0=min_val, x1=max_val, y1=max_val, line=dict(color="Red", dash="dash"))
+                st.plotly_chart(fig, use_container_width=True)
+
+            else:
+                acc = accuracy_score(y_test, y_pred)
+                m1, m2 = st.columns(2)
+                m1.markdown(f"<div class='metric-card'><h3>Accuracy</h3><p class='highlight'>{acc:.3f}</p></div>", unsafe_allow_html=True)
+                
+                st.markdown("### Confusion Matrix")
+                cm = confusion_matrix(y_test, y_pred)
+                labels = sorted(y.unique().tolist())
+                labels_str = [str(l) for l in labels]
+                fig = px.imshow(cm, text_auto=True, color_continuous_scale="Blues", title="Confusion Matrix Heatmap", x=labels_str, y=labels_str, labels={"color":"Count", "x":"Predicted", "y":"Actual"})
+                st.plotly_chart(fig, use_container_width=True)
+                
+        except Exception as e:
+            st.error("Please select the correct Feature and Target variables. The current input combination is not compatible with this model.")
+            st.expander("Show technical details").write(e)
+            
+    return df
+
+
 def main():
     set_page_style()
 
@@ -858,19 +979,24 @@ def main():
         st.info("Start by uploading a dataset to unlock the analysis workspace.")
         return
 
-    df = load_data(file)
-    if df is None:
-        return
+    if "uploaded_filename" not in st.session_state or st.session_state.uploaded_filename != file.name:
+        st.session_state.uploaded_filename = file.name
+        loaded_df = load_data(file)
+        if loaded_df is None:
+            return
+        st.session_state.df = loaded_df
+        st.session_state.original_df = loaded_df.copy()
+
+    df = st.session_state.df
+    original_df = st.session_state.original_df
 
     sidebar = st.sidebar
     sidebar.header("Workspace Navigation")
     section = sidebar.radio(
         "Select view",
-        ["Overview", "EDA", "Transform", "Visualisations", "Clustering", "Export"],
+        ["Overview", "EDA", "Transform", "Visualisations", "Clustering", "Modeling", "Export"],
         index=0,
     )
-
-    original_df = df.copy()
 
     if section == "Overview":
         summary_cards(df)
@@ -961,6 +1087,12 @@ def main():
         df = cluster_segmentation(df)
         st.markdown("</div>", unsafe_allow_html=True)
 
+    elif section == "Modeling":
+        st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+        st.subheader("Machine Learning Models")
+        df = modeling_section(df)
+        st.markdown("</div>", unsafe_allow_html=True)
+
     elif section == "Export":
         st.markdown("<div class='section-card'>", unsafe_allow_html=True)
         st.subheader("Review and export")
@@ -976,6 +1108,8 @@ def main():
 
         download_button(df)
         st.markdown("</div>", unsafe_allow_html=True)
+
+    st.session_state.df = df
 
     if section != "Export":
         with st.expander("Show dataset preview", expanded=False):

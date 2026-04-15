@@ -81,6 +81,26 @@ Upload any dataset and instantly perform:
 * Cluster visualization
 * Silhouette score evaluation
 
+### 🎯 Machine Learning Modeling
+
+* **Regression Models:**
+  * Linear Regression
+  * Decision Tree Regressor
+  * Random Forest Regressor
+  * Gradient Boosting Regressor
+  * K-Neighbors Regressor
+  * Support Vector Regressor (SVR)
+* **Classification Models:**
+  * Logistic Regression
+  * Decision Tree Classifier
+  * Random Forest Classifier
+  * Gradient Boosting Classifier
+  * K-Neighbors Classifier
+  * Support Vector Classifier (SVC)
+* Model training & evaluation
+* Performance metrics (R², Accuracy, MSE, Confusion Matrix)
+* Train-test split configuration
+
 ### 📦 Export
 
 * Compare original vs transformed dataset
