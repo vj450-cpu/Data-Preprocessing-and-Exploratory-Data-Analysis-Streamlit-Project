@@ -27,6 +27,22 @@ import plotly.io as pio
 pio.templates.default = "plotly_white"
 
 sns.set_theme(style="whitegrid", palette="pastel")
+import traceback
+
+
+# Helper function to add dtype labels to columns
+def add_dtype_label(df, col):
+    """Returns column name with dtype label"""
+    dtype = str(df[col].dtype)
+    return f"{col} ({dtype})"
+
+def get_columns_with_dtype(df, columns):
+    """Returns list of columns with dtype labels for display"""
+    return [add_dtype_label(df, col) for col in columns]
+
+def extract_column_name(label):
+    """Extracts column name from label like 'age (int64)' -> 'age'"""
+    return label.rsplit(' (', 1)[0]
 
 
 
@@ -445,6 +461,9 @@ def imbalance_analysis(df):
 def statistical_tests_section(df):
     numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
     categorical_columns = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    num_display = get_columns_with_dtype(df, numeric_columns)
+    cat_display = get_columns_with_dtype(df, categorical_columns)
+    
     with st.expander("Statistical tests", expanded=False):
         test_type = st.selectbox(
             "Choose test type",
@@ -458,7 +477,8 @@ def statistical_tests_section(df):
                 if not numeric_columns:
                     st.warning("No numeric columns available.")
                 else:
-                    col = st.selectbox("Numeric column", numeric_columns, key="uni-num-col")
+                    col_label = st.selectbox("Numeric column", num_display, key="uni-num-col")
+                    col = extract_column_name(col_label)
                     st.write(df[col].describe())
                     fig = px.histogram(df, x=col, nbins=40, title=f"Distribution for {col}")
                     st.plotly_chart(fig, use_container_width=True)
@@ -466,7 +486,8 @@ def statistical_tests_section(df):
                 if not categorical_columns:
                     st.warning("No categorical columns available.")
                 else:
-                    col = st.selectbox("Categorical column", categorical_columns, key="uni-cat-col")
+                    col_label = st.selectbox("Categorical column", cat_display, key="uni-cat-col")
+                    col = extract_column_name(col_label)
                     counts = df[col].value_counts().reset_index()
                     counts.columns = [col, "count"]
                     st.dataframe(counts)
@@ -477,8 +498,10 @@ def statistical_tests_section(df):
             if len(numeric_columns) < 2:
                 st.warning("At least two numeric columns required.")
             else:
-                x_col = st.selectbox("X numeric column", numeric_columns, key="bi-x-col")
-                y_col = st.selectbox("Y numeric column", [c for c in numeric_columns if c != x_col], key="bi-y-col")
+                x_col_label = st.selectbox("X numeric column", num_display, key="bi-x-col")
+                x_col = extract_column_name(x_col_label)
+                y_col_label = st.selectbox("Y numeric column", [l for l in num_display if extract_column_name(l) != x_col], key="bi-y-col")
+                y_col = extract_column_name(y_col_label)
                 data = df[[x_col, y_col]].dropna()
                 corr, pvalue = pearsonr(data[x_col], data[y_col])
                 st.write(f"Pearson correlation between {x_col} and {y_col}: {corr:.3f} (p={pvalue:.3f})")
@@ -489,8 +512,10 @@ def statistical_tests_section(df):
             if not categorical_columns or not numeric_columns:
                 st.warning("Need at least one categorical and one numeric column.")
             else:
-                cat_col = st.selectbox("Categorical column", categorical_columns, key="cat-num-cat")
-                num_col = st.selectbox("Numeric column", numeric_columns, key="cat-num-num")
+                cat_col_label = st.selectbox("Categorical column", cat_display, key="cat-num-cat")
+                cat_col = extract_column_name(cat_col_label)
+                num_col_label = st.selectbox("Numeric column", num_display, key="cat-num-num")
+                num_col = extract_column_name(num_col_label)
                 groups = [group[num_col].dropna() for _, group in df.groupby(cat_col)]
                 if len(groups) > 1:
                     try:
@@ -504,8 +529,10 @@ def statistical_tests_section(df):
             if len(categorical_columns) < 2:
                 st.warning("Need at least two categorical columns.")
             else:
-                cat1 = st.selectbox("First categorical column", categorical_columns, key="cat-cat-1")
-                cat2 = st.selectbox("Second categorical column", [c for c in categorical_columns if c != cat1], key="cat-cat-2")
+                cat1_label = st.selectbox("First categorical column", cat_display, key="cat-cat-1")
+                cat1 = extract_column_name(cat1_label)
+                cat2_label = st.selectbox("Second categorical column", [l for l in cat_display if extract_column_name(l) != cat1], key="cat-cat-2")
+                cat2 = extract_column_name(cat2_label)
                 contingency = pd.crosstab(df[cat1], df[cat2])
                 st.dataframe(contingency)
                 try:
@@ -568,7 +595,9 @@ def download_button(df, file_name="processed_data.csv"):
 
 
 def transform_missing(df):
-    col = st.selectbox("Missing value column", df.columns, key="missing-col")
+    cols_display = get_columns_with_dtype(df, df.columns.tolist())
+    col_label = st.selectbox("Missing value column", cols_display, key="missing-col")
+    col = extract_column_name(col_label)
     method = st.radio("Fill strategy", ["Drop rows", "Mean", "Median", "Mode", "Constant"], key="missing-method")
     constant = None
     if method == "Constant":
@@ -596,7 +625,9 @@ def transform_encoding(df):
         return df
 
     with st.expander("Categorical encoding options", expanded=True):
-        col = st.selectbox("Categorical column", cat_cols, key="enc-col")
+        cat_cols_display = get_columns_with_dtype(df, cat_cols)
+        col_label = st.selectbox("Categorical column", cat_cols_display, key="enc-col")
+        col = extract_column_name(col_label)
         enc_type = st.selectbox("Encoding type", ["One-Hot", "Ordinal", "Label"], key="enc-type")
         if st.button("Apply encoding", key="enc-apply"):
             if enc_type == "One-Hot":
@@ -619,7 +650,9 @@ def transform_scaling(df):
         return df
 
     with st.expander("Scaling options", expanded=True):
-        col = st.selectbox("Numeric column", num_cols, key="scale-col")
+        num_cols_display = get_columns_with_dtype(df, num_cols)
+        col_label = st.selectbox("Numeric column", num_cols_display, key="scale-col")
+        col = extract_column_name(col_label)
         scale_type = st.selectbox("Scaling method", ["None", "StandardScaler", "MinMaxScaler"], key="scale-type")
         if st.button("Apply scaling", key="scale-apply"):
             if scale_type == "StandardScaler":
@@ -724,6 +757,9 @@ def transform_pca(df):
 def visualization_section(df):
     numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
     categorical_columns = df.select_dtypes(include=["object", "category"]).columns.tolist()
+    num_display = get_columns_with_dtype(df, numeric_columns)
+    cat_display = get_columns_with_dtype(df, categorical_columns)
+    
     chart_type = st.selectbox(
         "Select visualization type",
         ["Scatter", "Line", "Bar", "Histogram", "Box", "Pie", "Heatmap", "Countplot"],
@@ -739,7 +775,8 @@ def visualization_section(df):
         if not categorical_columns:
             st.warning("No categorical columns available for countplots.")
             return
-        col = st.selectbox("Categorical column", categorical_columns, key="viz-count-col")
+        col_label = st.selectbox("Categorical column", cat_display, key="viz-count-col")
+        col = extract_column_name(col_label)
         counts = df[col].value_counts().reset_index()
         counts.columns = [col, "count"]
         fig = px.bar(counts, x=col, y="count", color=col, title=f"Countplot of {col}")
@@ -750,7 +787,8 @@ def visualization_section(df):
         if not categorical_columns:
             st.warning("No categorical columns available for pie charts.")
             return
-        col = st.selectbox("Categorical column", categorical_columns, key="viz-pie-col")
+        col_label = st.selectbox("Categorical column", cat_display, key="viz-pie-col")
+        col = extract_column_name(col_label)
         counts = df[col].value_counts().reset_index()
         counts.columns = [col, "count"]
         fig = px.pie(counts, names=col, values="count", title=f"Pie chart of {col}")
@@ -761,13 +799,19 @@ def visualization_section(df):
         if len(numeric_columns) < 2:
             st.warning("At least two numeric columns are needed for this chart.")
             return
-        x_col = st.selectbox("X axis", numeric_columns, key="viz-x")
-        y_col = st.selectbox("Y axis", [c for c in numeric_columns if c != x_col], key="viz-y")
+        x_col_label = st.selectbox("X axis", num_display, key="viz-x")
+        x_col = extract_column_name(x_col_label)
+        y_col_label = st.selectbox("Y axis", [l for l in num_display if extract_column_name(l) != x_col], key="viz-y")
+        y_col = extract_column_name(y_col_label)
         if chart_type == "Scatter":
             color_col = None
             if categorical_columns:
-                color_col = st.selectbox("Color by (optional)", ["None"] + categorical_columns, key="viz-color")
-                color_arg = None if color_col == "None" else color_col
+                color_options = ["None"] + cat_display
+                color_label = st.selectbox("Color by (optional)", color_options, key="viz-color")
+                if color_label == "None":
+                    color_arg = None
+                else:
+                    color_arg = extract_column_name(color_label)
                 fig = px.scatter(df, x=x_col, y=y_col, color=color_arg, title=f"{x_col} vs {y_col}")
             else:
                 fig = px.scatter(df, x=x_col, y=y_col, title=f"{x_col} vs {y_col}")
@@ -782,7 +826,8 @@ def visualization_section(df):
         if not numeric_columns:
             st.warning("No numeric columns available for histograms.")
             return
-        col = st.selectbox("Numeric column", numeric_columns, key="viz-hist-col")
+        col_label = st.selectbox("Numeric column", num_display, key="viz-hist-col")
+        col = extract_column_name(col_label)
         fig = px.histogram(df, x=col, nbins=40, title=f"Histogram of {col}")
         st.plotly_chart(fig, use_container_width=True)
         return
@@ -791,7 +836,8 @@ def visualization_section(df):
         if not numeric_columns:
             st.warning("No numeric columns available for box plots.")
             return
-        col = st.selectbox("Numeric column", numeric_columns, key="viz-box-col")
+        col_label = st.selectbox("Numeric column", num_display, key="viz-box-col")
+        col = extract_column_name(col_label)
         fig = px.box(df, y=col, title=f"Box plot of {col}")
         st.plotly_chart(fig, use_container_width=True)
         return
@@ -803,12 +849,15 @@ def visualization_section(df):
 
 def cluster_segmentation(df):
     numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
+    num_display = get_columns_with_dtype(df, numeric_columns)
+    
     with st.expander("Cluster segmentation", expanded=False):
         if len(numeric_columns) < 2:
             st.warning("Select at least two numeric columns for clustering.")
             return df
 
-        selected = st.multiselect("Numeric columns", numeric_columns, default=numeric_columns[:2], key="cluster-cols")
+        selected_labels = st.multiselect("Numeric columns", num_display, default=num_display[:2] if len(num_display) >= 2 else num_display, key="cluster-cols")
+        selected = [extract_column_name(label) for label in selected_labels]
         clusters = st.slider("Number of clusters", 2, min(10, len(df)), value=3, key="cluster-count")
         if st.button("Run clustering", key="cluster-run"):
             try:
@@ -844,7 +893,9 @@ def transform_types(df):
         return df
 
     with st.expander("Change column data type", expanded=True):
-        col = st.selectbox("Column to convert", cols, key="type-col")
+        cols_display = get_columns_with_dtype(df, cols)
+        col_label = st.selectbox("Column to convert", cols_display, key="type-col")
+        col = extract_column_name(col_label)
         target_type = st.selectbox(
             "Target type",
             ["int", "float", "string", "datetime", "category"],
@@ -870,7 +921,9 @@ def transform_delete_columns(df):
         return df
 
     with st.expander("Delete columns", expanded=True):
-        delete_cols = st.multiselect("Select columns to remove", cols, key="delete-cols")
+        cols_display = get_columns_with_dtype(df, cols)
+        delete_cols_labels = st.multiselect("Select columns to remove", cols_display, key="delete-cols")
+        delete_cols = [extract_column_name(label) for label in delete_cols_labels]
         if delete_cols and st.button("Delete selected columns", key="delete-apply"):
             try:
                 df = df.drop(columns=delete_cols)
@@ -1038,7 +1091,7 @@ def create_model_by_name(model_name):
     if model_name == "Support Vector Regressor":
         return SVR()
     if model_name == "Logistic Regression":
-        return LogisticRegression(max_iter=1500, solver='liblinear', random_state=42)
+        return LogisticRegression(max_iter=1500, solver='lbfgs', random_state=42)
     if model_name == "Decision Tree Classifier":
         return DecisionTreeClassifier(random_state=42)
     if model_name == "Random Forest Classifier":
@@ -1059,7 +1112,7 @@ def create_model_by_name(model_name):
         return VotingClassifier(estimators=[
             ('rf', RandomForestClassifier(random_state=42)),
             ('gb', GradientBoostingClassifier(random_state=42)),
-            ('lr', LogisticRegression(max_iter=1500, solver='liblinear', random_state=42))
+            ('lr', LogisticRegression(max_iter=1500, solver='lbfgs', random_state=42))
         ], voting='soft')
     return None
 
@@ -1105,8 +1158,8 @@ def get_search_space(model_name):
     if model_name == "Logistic Regression":
         return {
             'C': [0.01, 0.1, 1, 10],
-            'penalty': ['l1', 'l2'],
-            'solver': ['liblinear']
+            'penalty': ['l2'],
+            'solver': ['lbfgs', 'saga']
         }
     return {}
 
@@ -1243,15 +1296,20 @@ def automl_section(df):
         task = st.radio("🎯 Machine Learning Task", ["Regression", "Classification"], key="automl-task")
 
     target_options = numeric_columns if task == "Regression" else numeric_columns + categorical_columns
+    target_options_display = get_columns_with_dtype(df, target_options)
     with col2:
-        target_col = st.selectbox("🎯 Select Target Variable", target_options, key="automl-target")
+        target_label = st.selectbox("🎯 Select Target Variable", target_options_display, key="automl-target")
+    
+    target_col = extract_column_name(target_label)
 
     features = [col for col in numeric_columns if col != target_col]
     if not features:
         st.warning("You must have at least one numeric feature column apart from the target.")
         return df
 
-    selected_features = st.multiselect("Select Feature Variables", features, default=features[:min(5, len(features))], key="automl-features")
+    features_display = get_columns_with_dtype(df, features)
+    selected_features_labels = st.multiselect("Select Feature Variables", features_display, default=features_display[:min(5, len(features_display))], key="automl-features")
+    selected_features = [extract_column_name(label) for label in selected_features_labels]
     if not selected_features:
         st.error("Please select at least one feature.")
         return df
@@ -1393,8 +1451,11 @@ def modeling_section(df):
         task = st.radio("🎯 Machine Learning Task", ["Regression", "Classification"], key="ml-task")
 
     target_options = numeric_columns if task == "Regression" else numeric_columns + categorical_columns
+    target_options_display = get_columns_with_dtype(df, target_options)
     with col2:
-        target_col = st.selectbox("🎯 Select Target Variable (What to predict)", target_options, key="ml-target")
+        target_label = st.selectbox("🎯 Select Target Variable (What to predict)", target_options_display, key="ml-target")
+    
+    target_col = extract_column_name(target_label)
 
     features = [col for col in numeric_columns if col != target_col]
     
@@ -1429,17 +1490,23 @@ def modeling_section(df):
         
         selected_features = st.multiselect(
             "Select Feature Variables (Predictors)", 
-            features, 
-            default=features[:min(5, len(features))],  # Default to first 5 or all if less
+            get_columns_with_dtype(df, features),
+            default=get_columns_with_dtype(df, features[:min(5, len(features))]),
             key="ml-features"
         )
+        selected_features = [extract_column_name(label) for label in selected_features]
         
         # Feature scaling option
         if selected_features:
             scale_features = st.checkbox("Apply Standard Scaling to features", value=True, key="scale-features")
     
-    selected_features = st.session_state.get('ml-features', features[:min(5, len(features))])
-    
+    selected_features_raw = st.session_state.get('ml-features', get_columns_with_dtype(df, features[:min(5, len(features))]))
+    # stored values may be labels like "col (int64)"; convert to actual column names
+    if isinstance(selected_features_raw, list):
+        selected_features = [extract_column_name(s) for s in selected_features_raw]
+    else:
+        selected_features = []
+
     if not selected_features:
         st.error("Please select at least one feature to train on.")
         return df
@@ -1721,11 +1788,24 @@ def modeling_section(df):
             
             # Confusion Matrix
             st.markdown("### 🔢 Confusion Matrix")
-            cm = confusion_matrix(y_test, y_pred)
-            labels = sorted(y.unique().tolist())
+            # Build a consistent label list that matches the confusion matrix dimensions.
+            if hasattr(model, 'classes_'):
+                labels = list(model.classes_)
+            else:
+                # Ensure we include all observed labels in test or predictions
+                labels = list(np.unique(np.concatenate([np.asarray(y_test), np.asarray(y_pred)])))
+
+            # Compute confusion matrix using explicit labels to guarantee matching shape
+            try:
+                cm = confusion_matrix(y_test, y_pred, labels=labels)
+            except Exception:
+                # Fallback to default behavior if something unexpected happens
+                cm = confusion_matrix(y_test, y_pred)
+                labels = list(range(cm.shape[0]))
+
             labels_str = [str(l) for l in labels]
-            fig = px.imshow(cm, text_auto=True, color_continuous_scale="Blues", 
-                          title="Confusion Matrix Heatmap", x=labels_str, y=labels_str, 
+            fig = px.imshow(cm, text_auto=True, color_continuous_scale="Blues",
+                          title="Confusion Matrix Heatmap", x=labels_str, y=labels_str,
                           labels={"color":"Count", "x":"Predicted", "y":"Actual"})
             st.plotly_chart(fig, use_container_width=True)
 
