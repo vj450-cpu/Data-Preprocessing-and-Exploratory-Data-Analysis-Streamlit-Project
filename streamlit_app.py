@@ -32,17 +32,18 @@ import traceback
 
 # Helper function to add dtype labels to columns
 def add_dtype_label(df, col):
-    """Returns column name with dtype label"""
+    """Returns column name with dtype label and missing count"""
     dtype = str(df[col].dtype)
-    return f"{col} ({dtype})"
+    missing = df[col].isna().sum()
+    return f"{col} ({dtype}, {missing} missing)"
 
 def get_columns_with_dtype(df, columns):
     """Returns list of columns with dtype labels for display"""
     return [add_dtype_label(df, col) for col in columns]
 
 def extract_column_name(label):
-    """Extracts column name from label like 'age (int64)' -> 'age'"""
-    return label.rsplit(' (', 1)[0]
+    """Extracts column name from label like 'age (int64, 5 missing)' -> 'age'"""
+    return label.split(' (', 1)[0]
 
 
 
@@ -595,7 +596,12 @@ def download_button(df, file_name="processed_data.csv"):
 
 
 def transform_missing(df):
-    cols_display = get_columns_with_dtype(df, df.columns.tolist())
+    # Only show columns that have missing values
+    missing_cols = [col for col in df.columns if df[col].isna().sum() > 0]
+    if not missing_cols:
+        st.success("No missing values found in any column.")
+        return df
+    cols_display = get_columns_with_dtype(df, missing_cols)
     col_label = st.selectbox("Missing value column", cols_display, key="missing-col")
     col = extract_column_name(col_label)
     method = st.radio("Fill strategy", ["Drop rows", "Mean", "Median", "Mode", "Constant"], key="missing-method")
